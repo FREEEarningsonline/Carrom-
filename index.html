@@ -19,6 +19,7 @@
             display: flex; flex-direction: column; justify-content: center; align-items: center;
             height: 100vh; overflow: hidden; color: white;
             user-select: none; touch-action: none;
+            overscroll-behavior: none; /* PREVENTS MOBILE PULL-TO-REFRESH */
         }
 
         /* --- UI Overlay --- */
@@ -161,6 +162,25 @@
     <div class="controls-hint">Drag striker • Pull back to shoot</div>
 
 <script>
+    // --- ANTI-REFRESH LOGIC START ---
+    
+    // 1. Block F5, Ctrl+R, Command+R Shortcuts
+    window.addEventListener('keydown', function(e) {
+        if ((e.key === 'F5') || 
+            (e.ctrlKey && (e.key === 'r' || e.key === 'R')) || 
+            (e.metaKey && (e.key === 'r' || e.key === 'R'))) {
+            e.preventDefault();
+        }
+    });
+
+    // 2. Warn before page unloads (if they click browser Reload button or Close Tab)
+    window.addEventListener('beforeunload', function (e) {
+        e.preventDefault();
+        e.returnValue = ''; // Required for the warning box to appear
+    });
+
+    // --- ANTI-REFRESH LOGIC END ---
+
     const canvas = document.getElementById('carromCanvas');
     const ctx = canvas.getContext('2d');
     const msgEl = document.getElementById('game-message');
@@ -170,9 +190,9 @@
     let SCALE = 1;
     
     // Physics Constants
-    const FRICTION = 0.985; // Slightly less friction for better glide
+    const FRICTION = 0.985; 
     const WALL_DAMPING = 0.6; 
-    const SUB_STEPS = 4; // Physics runs 4 times per frame for accuracy
+    const SUB_STEPS = 4; 
     
     // Physics Radii & Mass
     const STRIKER_RADIUS = 20; 
@@ -190,14 +210,13 @@
 
     // --- State ---
     let gameState = 'MENU';
-    let turn = 'PLAYER'; // 'PLAYER' or 'CPU'
+    let turn = 'PLAYER'; 
     let pieces = [];
     
-    // Striker Object
     let striker = { 
         x: 0, y: 0, vx: 0, vy: 0, 
         radius: STRIKER_RADIUS, 
-        mass: 4, // Striker is 4x heavier than pieces
+        mass: 4, 
         color: '#ffeb3b', 
         isStriker: true, 
         dragging: false,
@@ -212,17 +231,15 @@
     // --- Resize Logic ---
     function resize() {
         const container = document.getElementById('game-container');
-        const size = container.clientWidth; // Internal width
+        const size = container.clientWidth; 
         canvas.width = size;
         canvas.height = size;
         BOARD_SIZE = size;
         SCALE = size / 600;
         
-        // Update physics props
         striker.radius = STRIKER_RADIUS * SCALE;
         pieces.forEach(p => p.radius = PIECE_RADIUS * SCALE);
         
-        // Reposition striker if resizing during aim
         if (gameState === 'AIMING') {
              const baselineY = (turn === 'PLAYER') ? canvas.height - (90 * SCALE) : (90 * SCALE);
              striker.y = baselineY;
@@ -236,7 +253,7 @@
             x: x, y: y, vx: 0, vy: 0,
             radius: PIECE_RADIUS * SCALE,
             type: type, 
-            mass: 1 // Standard mass
+            mass: 1 
         };
     }
 
@@ -272,7 +289,6 @@
     }
 
     function resetStriker() {
-        // Stop any residual movement
         striker.vx = 0; striker.vy = 0;
         striker.visible = true;
         striker.dragging = false;
@@ -281,7 +297,6 @@
         const margin = 65 * SCALE;
         striker.x = canvas.width / 2;
         
-        // CPU plays from TOP, Player from BOTTOM
         if (turn === 'PLAYER') {
             striker.y = canvas.height - (90 * SCALE);
         } else {
@@ -291,7 +306,6 @@
         gameState = 'AIMING';
         updateUI();
 
-        // Trigger CPU if needed
         if(turn === 'CPU') {
             setTimeout(cpuTurn, 1000);
         }
@@ -321,7 +335,6 @@
     function startDrag(e) {
         if(gameState !== 'AIMING' || turn !== 'PLAYER') return;
         const pos = getPos(e);
-        // Hit test slightly larger for mobile ease
         if (Math.hypot(pos.x - striker.x, pos.y - striker.y) < striker.radius * 2.5) {
             e.preventDefault();
             striker.dragging = true;
@@ -336,18 +349,14 @@
         const pos = getPos(e);
         const baselineY = canvas.height - (90 * SCALE);
 
-        // Logic: if vertical distance is small, we are SLIDING the striker
-        // If vertical distance is large, we are AIMING
         const vertDist = Math.abs(pos.y - baselineY);
         
         if (vertDist < 40 * SCALE) {
-            // Slide Mode
             dragStart = null; 
             const margin = 65 * SCALE;
             striker.x = Math.max(margin, Math.min(canvas.width - margin, pos.x));
             striker.y = baselineY; 
         } else {
-            // Aim Mode
             if(!dragStart) dragStart = { x: striker.x, y: striker.y };
             dragCurrent = pos;
         }
@@ -377,7 +386,7 @@
         gameState = 'MOVING';
     }
 
-    // --- Physics Engine (Improved) ---
+    // --- Physics Engine ---
     function updatePhysics() {
         if(gameState !== 'MOVING') return;
 
@@ -385,15 +394,12 @@
         const allObjects = [...pieces];
         if (striker.visible) allObjects.push(striker);
 
-        // Sub-stepping: Run physics multiple times per frame for stability
         for(let step = 0; step < SUB_STEPS; step++) {
             
             allObjects.forEach(obj => {
-                // Move
                 obj.x += obj.vx / SUB_STEPS;
                 obj.y += obj.vy / SUB_STEPS;
 
-                // Wall Collisions
                 const r = obj.radius;
                 const margin = 20 * SCALE;
                 
@@ -404,7 +410,6 @@
                 else if(obj.y > canvas.height - margin - r) { obj.y = canvas.height - margin - r; obj.vy *= -WALL_DAMPING; }
             });
 
-            // Object Collisions (Impulse Based)
             for (let i = 0; i < allObjects.length; i++) {
                 for (let j = i + 1; j < allObjects.length; j++) {
                     const p1 = allObjects[i];
@@ -417,10 +422,9 @@
 
                     if (distSq < minDist * minDist) {
                         const dist = Math.sqrt(distSq) || 0.001;
-                        const nx = dx / dist; // Normal Vector X
-                        const ny = dy / dist; // Normal Vector Y
+                        const nx = dx / dist; 
+                        const ny = dy / dist; 
 
-                        // 1. Separate objects (prevent sticking)
                         const overlap = minDist - dist;
                         const totalMass = p1.mass + p2.mass;
                         const m1Ratio = p2.mass / totalMass;
@@ -431,22 +435,16 @@
                         p2.x += nx * overlap * m2Ratio;
                         p2.y += ny * overlap * m2Ratio;
 
-                        // 2. Resolve Velocity (Elastic Collision)
-                        // Relative Velocity
                         const rvx = p2.vx - p1.vx;
                         const rvy = p2.vy - p1.vy;
                         
-                        // Velocity along normal
                         const velAlongNormal = rvx * nx + rvy * ny;
 
-                        // Do not resolve if velocities are separating
                         if (velAlongNormal > 0) continue;
 
-                        // Impulse scalar
-                        let jVal = -(1 + 0.8) * velAlongNormal; // 0.8 is restitution (bounciness)
+                        let jVal = -(1 + 0.8) * velAlongNormal; 
                         jVal /= (1 / p1.mass + 1 / p2.mass);
 
-                        // Apply impulse
                         const impulseX = jVal * nx;
                         const impulseY = jVal * ny;
 
@@ -459,7 +457,6 @@
             }
         }
 
-        // Apply Friction & Check Energy (Once per frame)
         allObjects.forEach(obj => {
             obj.vx *= FRICTION;
             obj.vy *= FRICTION;
@@ -488,7 +485,6 @@
             {x: canvas.width - 25*SCALE, y: canvas.height - 25*SCALE}
         ];
         
-        // Striker Foul
         if (striker.visible) {
             pockets.forEach(p => {
                 if (Math.hypot(striker.x - p.x, striker.y - p.y) < POCKET_RADIUS * SCALE) {
@@ -500,7 +496,6 @@
             });
         }
 
-        // Pieces
         for (let i = pieces.length - 1; i >= 0; i--) {
             const pc = pieces[i];
             let fell = false;
@@ -511,16 +506,15 @@
             if (fell) {
                 pocketedColor = pc.type;
                 
-                // Score Calculation
                 if (pc.type === 'red') {
                     scores[turn === 'PLAYER' ? 'p1' : 'p2'] += 50;
                     showMsg("QUEEN!", "#d93025");
                 } else if (pc.type === 'white') {
                     if (turn === 'PLAYER') { scores.p1 += 10; showMsg("Nice!", "#ffd700"); }
-                    else { scores.p2 += 10; } // CPU pockets white
+                    else { scores.p2 += 10; } 
                 } else if (pc.type === 'black') {
                     if (turn === 'CPU') { scores.p2 += 10; showMsg("CPU Score", "#ccc"); }
-                    else { scores.p1 += 10; } // Player pockets black
+                    else { scores.p1 += 10; } 
                 }
                 pieces.splice(i, 1);
             }
@@ -530,25 +524,17 @@
     function handleTurnEnd() {
         let nextTurn = (turn === 'PLAYER') ? 'CPU' : 'PLAYER';
         
-        // Penalty / Continue Turn Logic
         if (foulCommitted) {
-            // Foul penalties can be added here (e.g., return a piece)
-            // For now, just lose turn
             nextTurn = (turn === 'PLAYER') ? 'CPU' : 'PLAYER';
         } else if (pocketedColor) {
-            // Valid pocket? Keep turn
-            // Simplified: If you pocket ANYTHING (except opponent's strict color), you keep turn
-            // To make it strict carrom: Player needs White/Red, CPU needs Black/Red.
             const isPlayer = turn === 'PLAYER';
             if (isPlayer && (pocketedColor === 'white' || pocketedColor === 'red')) nextTurn = 'PLAYER';
             else if (!isPlayer && (pocketedColor === 'black' || pocketedColor === 'red')) nextTurn = 'CPU';
         }
 
-        // Reset variables
         pocketedColor = null;
         foulCommitted = false;
         
-        // Game Over Check
         const whites = pieces.filter(p => p.type === 'white').length;
         const blacks = pieces.filter(p => p.type === 'black').length;
         const reds = pieces.filter(p => p.type === 'red').length;
@@ -565,34 +551,25 @@
     function cpuTurn() {
         if (turn !== 'CPU' || gameState !== 'AIMING') return;
 
-        // 1. Find a target (Black or Red)
         const validTargets = pieces.filter(p => p.type === 'black' || p.type === 'red');
         let target = validTargets[Math.floor(Math.random() * validTargets.length)];
-        // Fallback to any piece if no preferred targets
         if (!target && pieces.length > 0) target = pieces[0];
 
         if (target) {
-            // 2. Position striker near the target horizontally
             const margin = 70 * SCALE;
-            // Add some randomness to position
             let idealX = target.x + (Math.random() * 40 - 20);
             striker.x = Math.max(margin, Math.min(canvas.width - margin, idealX));
             
-            // 3. Calculate Shot
             const dx = target.x - striker.x;
             const dy = target.y - striker.y;
             const angle = Math.atan2(dy, dx);
             
-            // 4. Power calculation (distance based + random boost)
             const dist = Math.hypot(dx, dy);
-            // Ensure enough power to reach
             let power = (dist * 0.08) + 15; 
             if(power > MAX_POWER) power = MAX_POWER;
             
-            // 5. Shoot
             shootStriker(power * SCALE, angle);
         } else {
-            // Just shoot down if board is empty (shouldn't happen unless game over)
             shootStriker(20 * SCALE, Math.PI/2);
         }
     }
@@ -604,7 +581,6 @@
 
         drawCarromBoard();
 
-        // Aim Line (Player Only)
         if (gameState === 'AIMING' && turn === 'PLAYER' && striker.dragging && dragStart && dragCurrent) {
             const dx = dragStart.x - dragCurrent.x;
             const dy = dragStart.y - dragCurrent.y;
@@ -620,7 +596,6 @@
             ctx.setLineDash([]);
         }
 
-        // Shadows
         ctx.shadowColor = 'rgba(0,0,0,0.3)';
         ctx.shadowBlur = 8;
         ctx.shadowOffsetX = 3; ctx.shadowOffsetY = 3;
@@ -628,7 +603,6 @@
         pieces.forEach(drawPiece);
         if (striker.visible) {
             drawPiece(striker);
-            // Active Player Indicator Ring
             if (gameState === 'AIMING') {
                 ctx.beginPath();
                 ctx.arc(striker.x, striker.y, striker.radius + 6, 0, Math.PI*2);
@@ -646,7 +620,6 @@
         const w = canvas.width;
         const h = canvas.height;
 
-        // Pockets
         const pr = POCKET_RADIUS * SCALE;
         const margin = 25 * SCALE;
         ctx.fillStyle = '#1a1a1a';
@@ -655,7 +628,6 @@
             ctx.strokeStyle = '#5c3a21'; ctx.lineWidth = 4; ctx.stroke();
         });
 
-        // Center Design
         ctx.beginPath(); ctx.arc(cx, cy, 75 * SCALE, 0, Math.PI*2);
         ctx.strokeStyle = COLORS.lines; ctx.lineWidth = 2; ctx.stroke();
         
@@ -668,18 +640,15 @@
         }
         ctx.stroke();
 
-        // Baselines
         const lineOffset = 90 * SCALE;
         const sideMargin = 60 * SCALE;
-        drawBaseline(sideMargin, lineOffset, w - sideMargin, lineOffset); // Top (CPU)
-        drawBaseline(sideMargin, h - lineOffset, w - sideMargin, h - lineOffset); // Bottom (Player)
+        drawBaseline(sideMargin, lineOffset, w - sideMargin, lineOffset); 
+        drawBaseline(sideMargin, h - lineOffset, w - sideMargin, h - lineOffset); 
         
-        // Vertical connecting lines
         ctx.strokeStyle = COLORS.lines; ctx.lineWidth = 2;
         ctx.beginPath(); ctx.moveTo(lineOffset, sideMargin); ctx.lineTo(lineOffset, h - sideMargin); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(w - lineOffset, sideMargin); ctx.lineTo(w - lineOffset, h - sideMargin); ctx.stroke();
 
-        // Arrows
         drawArrow(cx, cy, margin + pr, margin + pr);
         drawArrow(cx, cy, w - margin - pr, margin + pr);
         drawArrow(cx, cy, margin + pr, h - margin - pr);
